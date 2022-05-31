@@ -19,7 +19,7 @@ import {
   Button,
   TouchableOpacity,
 } from 'react-native';
-
+import RNFS from 'react-native-fs';
 import {Header, Colors} from 'react-native/Libraries/NewAppScreen';
 import {stringToBytes, bytesToString} from 'convert-string';
 import BleManager from 'react-native-ble-manager';
@@ -50,45 +50,49 @@ const App = () => {
 
   readBinary = () => {
     try {
-      // Open a file for reading
-      // const fd = await BinaryFile.open('./display-stm32f1.bin');
-      // // // Read a byte
-      // const byteValue = await BinaryFile.readByte(fd);
-      // console.log('====BYTE-VALUE=====>', byteValue);
-      // // // Read a byte
-      // // const byteValue = await BinaryFile.readByte(fd);
-      // // // Read a next integer (int32) - big endian
-      // // const intValue = await BinaryFile.readInt32(fd);
-      // // // Read a next integer (int64) - big endian
-      // // const intValue = await BinaryFile.readInt64(fd);
-      // // Seek to 1024
-      // await BinaryFile.seek(fd, 1024);
-      // // Read 512 bytes (uint8[])
-      // const buffer = await BinaryFile.read(fd, 512);
-      // console.log('========BUFFFER=======>', buffer);
-      // // Close the file
-      // await BinaryFile.close(fd);
-      // Another file
-      // const fd2 = await BinaryFile.open('path-to-file-2');
-      // ...
-      // await BinaryFile.close(fd2);
+      // const file = new FileReader();
+      // file.onload = function (evt) {
+      //   console.log('HERE ====>', evt.target.result);
+      // };
+      // file.readAsBinaryString(binfile);
+
+      RNFS.readFileAssets('display-stm32f1.bin') // On Android, use "RNFS.DocumentDirectoryPath" (MainBundlePath is not defined)
+        .then(result => {
+          console.log('GOT RESULT', result);
+          // stat the first file
+          // return Promise.all([RNFS.stat(result[0].path), result[0].path]);
+        })
+        // .then(statResult => {
+        //   // if (statResult[0].isFile()) {
+        //   // if we have a file, read it
+        //   return RNFS.readFile('./display-stm32f1', 'base64');
+        //   // }
+
+        //   // return 'no file';
+        // })
+        .then(contents => {
+          // log the file contents
+          console.log(contents);
+        })
+        .catch(err => {
+          console.log(err.message, err.code);
+        });
     } catch (err) {
       console.log('==e-r-r==>', err);
     }
   };
 
   const startScanBt = () => {
-    // if (!isScanning) {
-    //   BleManager.scan([], 3, true)
-    //     .then(results => {
-    //       console.log('Scanning...');
-    //       setIsScanning(true);
-    //     })
-    //     .catch(err => {
-    //       console.error(err);
-    //     });
-    // }
-    readBinary();
+    if (!isScanning) {
+      BleManager.scan([], 3, true)
+        .then(() => {
+          console.log('Scanning...');
+          setIsScanning(true);
+        })
+        .catch(err => {
+          console.error(err);
+        });
+    }
   };
 
   const handleStopScan = () => {
@@ -116,6 +120,7 @@ const App = () => {
       peripherals.set(peripheral.id, peripheral);
       setList(Array.from(peripherals.values()));
     }
+    setConnected(false);
     console.log('Disconnected from ' + data.peripheral);
   };
 
@@ -131,7 +136,10 @@ const App = () => {
 
   const connectP = async peripheral => {
     try {
+      if (connected) return;
       await BleManager.connect(peripheral);
+      setConnected(true);
+      console.log('connected');
     } catch (err) {
       console.log('CONNECTION ERROR ', err);
     }
@@ -139,10 +147,45 @@ const App = () => {
 
   const retreiveP = async peripheral => {
     try {
+      if (connected) return;
       await BleManager.retrieveServices(peripheral);
+      console.log('retrieved');
     } catch (error) {
       console.log('retrieve error => ', error);
     }
+  };
+
+  const readBytes = async () => {
+    try {
+      const result = await RNFS.readFileAssets('display-stm32f1.bin', 'base64');
+      // On Android, use "RNFS.DocumentDirectoryPath" (MainBundlePath is not defined)
+      console.log('GOT RESULT', result);
+      // stat the first file
+      // return Promise.all([RNFS.stat(result[0].path), result[0].path]);
+      return result;
+    } catch (err) {
+      console.log('Read bytes error => ', err);
+      return '0';
+    }
+  };
+
+  const writeBytes = async peripheral => {
+    const bytes = await readBytes();
+    const convertDataToBytes = stringToBytes(bytes);
+    if (bytes === '0') return;
+    BleManager.writeWithoutResponse(
+      peripheral,
+      '2cc83522-8192-4b6c-ad94-1f54123ed870',
+      '2cc83522-8192-4b6c-ad94-1f54123ed871',
+      convertDataToBytes,
+      // 1024,
+    )
+      .then(data => {
+        console.log('Write success');
+      })
+      .catch(err => {
+        console.log('Write error => ', err);
+      });
   };
 
   const writeP = async peripheral => {
@@ -176,14 +219,13 @@ const App = () => {
     }
   };
 
-  const handleDiscoverPeripheral = async peripheral => {
-    // console.log(peripheral);
+  const handleDiscoveredPeripheral = async peripheral => {
     if (peripheral.name === 'UN-Bolted Module Test') {
       console.log('yohoo', peripheral);
       await BleManager.stopScan();
       await connectP(peripheral.id);
       await retreiveP(peripheral.id);
-      await writeP(peripheral.id);
+      // await writeP(peripheral.id);
       return;
     }
   };
@@ -193,7 +235,7 @@ const App = () => {
 
     bleManagerEmitter.addListener(
       'BleManagerDiscoverPeripheral',
-      handleDiscoverPeripheral,
+      handleDiscoveredPeripheral,
     );
     bleManagerEmitter.addListener('BleManagerStopScan', handleStopScan);
     bleManagerEmitter.addListener(
@@ -224,7 +266,11 @@ const App = () => {
                 placeholder="Enter minutes"
               />
 
-              <Button title="Start" color="#000000" onPress={startScanBt} />
+              <Button
+                title={connected ? 'Start' : 'Connect'}
+                color="#000000"
+                onPress={connected ? writeBytes : startScanBt}
+              />
             </View>
           </View>
         </ScrollView>

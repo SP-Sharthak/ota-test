@@ -8,8 +8,10 @@ target 'yEnergy1' do
   pod 'react-native-camera', path: '../node_modules/react-native-camera', subspecs: [
     'BarcodeDetectorMLKit'
   ]
+  pod 'RNFS', :path => '../node_modules/react-native-fs'
   permissions_path = '../node_modules/react-native-permissions/ios'
- 
+
+
   use_react_native!(
     :path => config[:reactNativePath],
     # to enable hermes on iOS, change `false` to `true` and then install pods
@@ -22,7 +24,6 @@ target 'yEnergy1' do
   pod 'Permission-LocationAlways', :path => "#{permissions_path}/LocationAlways"
   pod 'Permission-LocationWhenInUse', :path => "#{permissions_path}/LocationWhenInUse"
  
-
   target 'yEnergy1Tests' do
     inherit! :complete
     # Pods for testing
